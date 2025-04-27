@@ -271,29 +271,29 @@ class Database:
         return self.cursor.fetchall()
     
     def get_pending_registrations(self):
-        """Get all pending registrations for admin review."""
+        """Get all pending registrations with user and course details"""
         self.cursor.execute("""
-        SELECT r.id, u.first_name, u.last_name, u.student_id, 
-               tm.name as term_name, t.name as teacher_name, c.price, 
-               r.payment_type, r.payment_method, r.receipt_photo_link,
-               r.first_payment_confirmed, r.second_payment_confirmed
-        FROM registrations r
-        JOIN users u ON r.telegram_id = u.telegram_id
-        JOIN courses c ON r.course_id = c.id
-        JOIN teachers t ON r.teacher_id = t.id
-        JOIN terms tm ON r.term_id = tm.id
-        WHERE r.payment_status = 'pending'
-        ORDER BY r.registration_date ASC
+            SELECT r.id, u.first_name, u.last_name, u.student_id, 
+                   tm.name as term_name, t.name as teacher_name, c.price, 
+                   r.payment_type, r.payment_method, r.receipt_photo_link,
+                   r.first_payment_confirmed, r.second_payment_confirmed
+            FROM registrations r
+            JOIN users u ON r.telegram_id = u.telegram_id
+            JOIN courses c ON r.course_id = c.id
+            JOIN teachers t ON r.teacher_id = t.id
+            JOIN terms tm ON r.term_id = tm.id
+            WHERE r.payment_status = 'pending'
+            ORDER BY r.registration_date ASC
         """)
         return self.cursor.fetchall()
     
     def get_faq(self):
-        """Get all FAQ items."""
-        self.cursor.execute("SELECT question, answer FROM faq")
+        """Get all FAQ items"""
+        self.cursor.execute("SELECT id, question, answer FROM faq")
         return self.cursor.fetchall()
     
     def get_about(self):
-        """Get about information."""
+        """Get about text"""
         self.cursor.execute("SELECT title, content FROM about")
         return self.cursor.fetchone()
     
@@ -305,4 +305,131 @@ class Database:
     
     def close(self):
         """Close the database connection."""
-        self.conn.close() 
+        self.conn.close()
+
+    # New methods for admin functionality
+    def get_all_teachers(self):
+        """Get all teachers"""
+        self.cursor.execute("SELECT * FROM teachers")
+        return self.cursor.fetchall()
+        
+    def get_all_courses(self):
+        """Get all courses"""
+        self.cursor.execute("SELECT * FROM courses")
+        return self.cursor.fetchall()
+        
+    def get_total_users(self):
+        """Get total number of users"""
+        self.cursor.execute("SELECT COUNT(*) FROM users")
+        return self.cursor.fetchone()[0]
+        
+    def get_total_registrations(self):
+        """Get total number of registrations"""
+        self.cursor.execute("SELECT COUNT(*) FROM registrations")
+        return self.cursor.fetchone()[0]
+        
+    def get_completed_payments(self):
+        """Get number of completed payments"""
+        self.cursor.execute("SELECT COUNT(*) FROM registrations WHERE payment_status = 'approved'")
+        return self.cursor.fetchone()[0]
+        
+    def get_pending_payments(self):
+        """Get number of pending payments"""
+        self.cursor.execute("SELECT COUNT(*) FROM registrations WHERE payment_status = 'pending'")
+        return self.cursor.fetchone()[0]
+        
+    def add_teacher(self, name, term_id, bio):
+        """Add a new teacher"""
+        self.cursor.execute(
+            "INSERT INTO teachers (name, term_id, bio) VALUES (?, ?, ?)",
+            (name, term_id, bio)
+        )
+        self.conn.commit()
+        return self.cursor.lastrowid
+        
+    def update_teacher(self, teacher_id, name, term_id, bio):
+        """Update teacher information"""
+        self.cursor.execute(
+            "UPDATE teachers SET name = ?, term_id = ?, bio = ? WHERE id = ?",
+            (name, term_id, bio, teacher_id)
+        )
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+        
+    def delete_teacher(self, teacher_id):
+        """Delete a teacher"""
+        self.cursor.execute("DELETE FROM teachers WHERE id = ?", (teacher_id,))
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+        
+    def add_course(self, term_id, teacher_id, day, time, location, topics, price):
+        """Add a new course"""
+        self.cursor.execute(
+            "INSERT INTO courses (term_id, teacher_id, day, time, location, topics, price) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (term_id, teacher_id, day, time, location, topics, price)
+        )
+        self.conn.commit()
+        return self.cursor.lastrowid
+        
+    def update_course(self, course_id, term_id, teacher_id, day, time, location, topics, price):
+        """Update course information"""
+        self.cursor.execute(
+            "UPDATE courses SET term_id = ?, teacher_id = ?, day = ?, time = ?, location = ?, topics = ?, price = ? WHERE id = ?",
+            (term_id, teacher_id, day, time, location, topics, price, course_id)
+        )
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+        
+    def delete_course(self, course_id):
+        """Delete a course"""
+        self.cursor.execute("DELETE FROM courses WHERE id = ?", (course_id,))
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+        
+    def add_term(self, name, description):
+        """Add a new term"""
+        self.cursor.execute(
+            "INSERT INTO terms (name, description) VALUES (?, ?)",
+            (name, description)
+        )
+        self.conn.commit()
+        return self.cursor.lastrowid
+        
+    def update_term(self, term_id, name, description):
+        """Update term information"""
+        self.cursor.execute(
+            "UPDATE terms SET name = ?, description = ? WHERE id = ?",
+            (name, description, term_id)
+        )
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+        
+    def delete_term(self, term_id):
+        """Delete a term"""
+        self.cursor.execute("DELETE FROM terms WHERE id = ?", (term_id,))
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+        
+    def add_faq(self, question, answer):
+        """Add a new FAQ item"""
+        self.cursor.execute(
+            "INSERT INTO faq (question, answer) VALUES (?, ?)",
+            (question, answer)
+        )
+        self.conn.commit()
+        return self.cursor.lastrowid
+        
+    def update_faq(self, faq_id, question, answer):
+        """Update FAQ information"""
+        self.cursor.execute(
+            "UPDATE faq SET question = ?, answer = ? WHERE id = ?",
+            (question, answer, faq_id)
+        )
+        self.conn.commit()
+        return self.cursor.rowcount > 0
+        
+    def delete_faq(self, faq_id):
+        """Delete a FAQ item"""
+        self.cursor.execute("DELETE FROM faq WHERE id = ?", (faq_id,))
+        self.conn.commit()
+        return self.cursor.rowcount > 0 
