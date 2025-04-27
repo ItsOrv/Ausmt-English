@@ -36,17 +36,70 @@ async def register_registration_handlers(bot):
         message_text = message.raw_text
         
         # Extract course information from the message text
-        # In a real app, this would be stored in a user session
         try:
-            term_name = message_text.split("🔖 **ترم**: ")[1].split("\n")[0]
-            teacher_name = message_text.split("👨‍🏫 **استاد**: ")[1].split("\n")[0]
-            price = int(message_text.split("💰 **شهریه**: ")[1].split(" تومان")[0].replace(",", ""))
+            # Create more flexible pattern matching that works with or without bold formatting
+            term_pattern = "🔖 (?:\\*\\*)?ترم(?:\\*\\*)?:"
+            teacher_pattern = "👨‍🏫 (?:\\*\\*)?استاد(?:\\*\\*)?:"
+            price_pattern = "💰 (?:\\*\\*)?شهریه(?:\\*\\*)?:"
+            
+            # Check if the message contains the required information
+            if not (re.search(term_pattern, message_text) and 
+                    re.search(teacher_pattern, message_text) and 
+                    re.search(price_pattern, message_text)):
+                logger.error(f"Required course information not found in message: {message_text}")
+                await event.edit("""اطلاعات کافی برای ثبت‌نام در دسترس نیست.
+
+لطفا ابتدا از منوی اصلی، گزینه «مشاهده دوره‌ها» را انتخاب کنید و پس از انتخاب ترم و استاد، از صفحه جزئیات دوره اقدام به ثبت‌نام نمایید.""", 
+                               buttons=KeyboardManager.back_to_main())
+                return
+                
+            # Extract term name (handle both bold and non-bold formats)
+            term_match = re.search(f"{term_pattern} (.*?)(?:\\n|$)", message_text)
+            if not term_match:
+                raise Exception("Could not extract term name")
+            term_name = term_match.group(1).strip()
+            
+            # Extract teacher name (handle both bold and non-bold formats)
+            teacher_match = re.search(f"{teacher_pattern} (.*?)(?:\\n|$)", message_text)
+            if not teacher_match:
+                raise Exception("Could not extract teacher name")
+            teacher_name = teacher_match.group(1).strip()
+            
+            # Extract price (handle both bold and non-bold formats)
+            price_match = re.search(f"{price_pattern} (.*?)(?:\\s+تومان|$)", message_text)
+            if not price_match:
+                raise Exception("Could not extract price")
+            price_str = price_match.group(1).strip()
+            price = int(price_str.replace(",", ""))
             
             # Get IDs from names
-            term_id = db.cursor.execute("SELECT id FROM terms WHERE name = ?", (term_name,)).fetchone()[0]
-            teacher_id = db.cursor.execute("SELECT id FROM teachers WHERE name = ?", (teacher_name,)).fetchone()[0]
-            course_id = db.cursor.execute("SELECT id FROM courses WHERE term_id = ? AND teacher_id = ?", 
-                                          (term_id, teacher_id)).fetchone()[0]
+            term_result = db.cursor.execute("SELECT id FROM terms WHERE name = ?", (term_name,)).fetchone()
+            if not term_result:
+                logger.error(f"Term not found in database: {term_name}")
+                await event.edit("ترم مورد نظر در سیستم یافت نشد. لطفا با پشتیبانی تماس بگیرید.", 
+                               buttons=KeyboardManager.back_to_main())
+                return
+                
+            term_id = term_result[0]
+            
+            teacher_result = db.cursor.execute("SELECT id FROM teachers WHERE name = ?", (teacher_name,)).fetchone()
+            if not teacher_result:
+                logger.error(f"Teacher not found in database: {teacher_name}")
+                await event.edit("استاد مورد نظر در سیستم یافت نشد. لطفا با پشتیبانی تماس بگیرید.", 
+                               buttons=KeyboardManager.back_to_main())
+                return
+                
+            teacher_id = teacher_result[0]
+            
+            course_result = db.cursor.execute("SELECT id FROM courses WHERE term_id = ? AND teacher_id = ?", 
+                                          (term_id, teacher_id)).fetchone()
+            if not course_result:
+                logger.error(f"Course not found in database: term_id={term_id}, teacher_id={teacher_id}")
+                await event.edit("دوره مورد نظر در سیستم یافت نشد. لطفا با پشتیبانی تماس بگیرید.", 
+                               buttons=KeyboardManager.back_to_main())
+                return
+                
+            course_id = course_result[0]
             
             # Store registration info in user_data
             user_data[sender_id] = {
@@ -59,12 +112,15 @@ async def register_registration_handlers(bot):
                 'registration_state': 'awaiting_student_id'
             }
             
-            # Ask for student ID
-            await event.edit("لطفا شماره دانشجویی خود را وارد کنید:")
+            # Ask for student ID or national ID
+            await event.edit("لطفا شماره دانشجویی یا کد ملی خود را وارد کنید:")
             
         except Exception as e:
             logger.error(f"Error extracting course info: {e}")
-            await event.edit("خطایی در فرآیند ثبت‌نام رخ داد. لطفا مجددا تلاش کنید.")
+            await event.edit("""خطایی در فرآیند ثبت‌نام رخ داد.
+
+لطفا از منوی اصلی، گزینه «مشاهده دوره‌ها» را انتخاب کرده و پس از انتخاب ترم و استاد، از صفحه جزئیات دوره اقدام به ثبت‌نام نمایید.""", 
+                           buttons=KeyboardManager.back_to_main())
     
     @bot.on(events.NewMessage(func=lambda e: e.is_private and not e.text.startswith('/')))
     async def message_handler(event):
@@ -80,32 +136,46 @@ async def register_registration_handlers(bot):
             if state == 'awaiting_student_id':
                 student_id = event.text.strip()
                 
-                # Validate student ID (simple validation for now)
-                if not re.match(r'^\d{7,10}$', student_id):
-                    await event.respond("شماره دانشجویی باید بین 7 تا 10 رقم باشد. لطفا مجددا وارد کنید:")
+                # Validate student ID (updated validation - only max length)
+                if not re.match(r'^\d{1,20}$', student_id):
+                    await event.respond("شماره دانشجویی یا کد ملی باید حداکثر ۲۰ رقم باشد. لطفا مجددا وارد کنید:")
                     return
                 
                 # Check student ID in Excel file
                 exists, first_name, last_name = excel_handler.check_student_id(student_id)
                 
+                # Store student ID regardless of whether it exists
+                user_data[sender_id]['student_id'] = student_id
+                user_data[sender_id]['registration_state'] = 'confirm_student_info'
+                
                 if exists:
-                    # Store student info
-                    user_data[sender_id]['student_id'] = student_id
+                    # Student exists in Excel file - store their info
                     user_data[sender_id]['first_name'] = first_name
                     user_data[sender_id]['last_name'] = last_name
-                    user_data[sender_id]['registration_state'] = 'confirm_student_info'
                     
-                    # Ask for confirmation
+                    # Ask for confirmation with full information
                     confirm_message = f"""اطلاعات دانشجویی شما:
 
 نام و نام خانوادگی: **{first_name} {last_name}**
-شماره دانشجویی: **{student_id}**
+شماره شناسایی: **{student_id}**
 
 آیا اطلاعات فوق صحیح است؟"""
                     
                     await event.respond(confirm_message, buttons=KeyboardManager.confirm_keyboard())
                 else:
-                    await event.respond("شماره دانشجویی وارد شده در سیستم یافت نشد. لطفا مجددا وارد کنید یا با پشتیبانی تماس بگیرید.")
+                    # Student not found - use placeholder values and let them continue
+                    user_data[sender_id]['first_name'] = "در حال بررسی"
+                    user_data[sender_id]['last_name'] = "در حال بررسی"
+                    
+                    # Inform user and let them continue
+                    not_found_message = f"""در لیست فعلی مشخصات شما با شماره **{student_id}** پیدا نشد.
+
+در ساعات آینده بعد از بررسی دقیق‌تر، درخواست تایید اطلاعات برایتان ارسال خواهد شد.
+بدون در نظر گرفتن این مورد می‌توانید به بقیه مراحل ثبت‌نام خود بپردازید.
+
+آیا مایل به ادامه ثبت‌نام هستید؟"""
+                    
+                    await event.respond(not_found_message, buttons=KeyboardManager.confirm_keyboard())
             
     @bot.on(events.CallbackQuery(pattern=r'confirm'))
     async def confirm_student_info_handler(event):
@@ -202,13 +272,16 @@ async def register_registration_handlers(bot):
 ساعات کاری: شنبه تا چهارشنبه، 8 الی 16"""
                 
                 # Notify admin
+                needs_verification = user_data[sender_id]['first_name'] == "در حال بررسی"
+                verification_note = "\n⚠️ نیاز به بررسی هویت دانشجو (اطلاعات در سیستم یافت نشد)" if needs_verification else ""
+                
                 admin_message = f"""درخواست پرداخت حضوری جدید:
 
 نام و نام خانوادگی: {user_data[sender_id]['first_name']} {user_data[sender_id]['last_name']}
-شماره دانشجویی: {user_data[sender_id]['student_id']}
+شماره دانشجویی/کد ملی: {user_data[sender_id]['student_id']}
 دوره: {user_data[sender_id]['term_name']} با استاد {user_data[sender_id]['teacher_name']}
 نوع پرداخت: {'قسطی' if payment_method == 'installment' else 'کامل'}
-مبلغ: {payment_amount:,} تومان"""
+مبلغ: {payment_amount:,} تومان{verification_note}"""
                 
                 try:
                     admin_id = Config.ADMIN_ID
@@ -255,13 +328,16 @@ async def register_registration_handlers(bot):
                 )
                 
                 # Notify admin
+                needs_verification = user_data[sender_id]['first_name'] == "در حال بررسی"
+                verification_note = "\n⚠️ نیاز به بررسی هویت دانشجو (اطلاعات در سیستم یافت نشد)" if needs_verification else ""
+                
                 admin_message = f"""درخواست بررسی پرداخت کارت به کارت جدید:
 
 نام و نام خانوادگی: {user_data[sender_id]['first_name']} {user_data[sender_id]['last_name']}
-شماره دانشجویی: {user_data[sender_id]['student_id']}
+شماره دانشجویی/کد ملی: {user_data[sender_id]['student_id']}
 دوره: {user_data[sender_id]['term_name']} با استاد {user_data[sender_id]['teacher_name']}
 نوع پرداخت: {'قسطی' if user_data[sender_id]['payment_method'] == 'installment' else 'کامل'}
-مبلغ: {user_data[sender_id]['payment_amount']:,} تومان"""
+مبلغ: {user_data[sender_id]['payment_amount']:,} تومان{verification_note}"""
                 
                 # Make registration ID available to admin for approval/rejection
                 user_data[sender_id]['receipt_data'] = {
@@ -288,70 +364,75 @@ async def register_registration_handlers(bot):
             else:
                 await event.respond("خطا در دریافت تصویر رسید. لطفا مجددا تلاش کنید.")
     
-    @bot.on(events.NewMessage(pattern='📄 پیگیری وضعیت ثبت‌نام و پرداخت'))
+    @bot.on(events.CallbackQuery(pattern=r'check_registration_status'))
     async def check_status_handler(event):
         """Handler for checking registration status."""
         sender = await event.get_sender()
         sender_id = sender.id
         
-        # Get user registrations
+        # Get user's registrations from database
         registrations = db.get_user_registrations(sender_id)
         
         if not registrations:
-            await event.respond("شما هیچ ثبت‌نامی انجام نداده‌اید.", 
-                                buttons=KeyboardManager.back_to_main())
+            await event.edit("""شما هیچ ثبت‌نامی در سیستم ندارید.
+
+برای ثبت‌نام در دوره‌ها، از منوی اصلی گزینه «مشاهده دوره‌ها» را انتخاب کنید.""", buttons=KeyboardManager.back_to_main())
             return
         
-        # Format registration information
-        status_message = "**وضعیت ثبت‌نام و پرداخت‌های شما:**\n\n"
+        # Format registrations list
+        message = "**ثبت‌نام‌های شما:**\n\n"
         
         for i, reg in enumerate(registrations, 1):
-            reg_id, term_name, teacher_name, price, payment_status, first_payment, second_payment, payment_type, payment_method, reg_date = reg
+            # Unpack the registration data to match the database columns
+            # From the SQL query, the columns are:
+            # r.id, tm.name as term_name, t.name as teacher_name, c.price, 
+            # r.payment_status, r.first_payment_confirmed, r.second_payment_confirmed,
+            # r.payment_type, r.payment_method, r.registration_date
+            
+            reg_id = reg[0]
+            term_name = reg[1]
+            teacher_name = reg[2]
+            price = reg[3]
+            payment_status = reg[4]
+            first_payment = reg[5]
+            second_payment = reg[6]
+            payment_type = reg[7]
+            payment_method = reg[8]
+            # registration_date = reg[9] (not used here)
+            
+            payment_info = f"قسط {'دوم' if second_payment else 'اول'}" if payment_method == 'installment' else "پرداخت کامل"
+            payment_amount = price // 2 if payment_method == 'installment' and not second_payment else price
             
             # Format payment status
-            if payment_status == 'confirmed':
-                status_text = "✅ تأیید شده"
-            elif payment_status == 'rejected':
-                status_text = "❌ رد شده"
-            else:
-                status_text = "⏳ در انتظار تأیید"
-            
-            # Format payment method
-            if payment_method == 'installment':
-                if first_payment and second_payment:
-                    payment_text = "پرداخت قسطی (هر دو قسط پرداخت شده)"
-                elif first_payment:
-                    payment_text = "پرداخت قسطی (قسط اول پرداخت شده)"
+            if payment_status == 'pending':
+                status_text = "در انتظار تأیید"
+            elif payment_status == 'approved':
+                if payment_method == 'installment' and not second_payment:
+                    status_text = "قسط اول تأیید شده"
+                    # Add button for second payment
+                    second_payment_button = KeyboardManager.second_payment_menu(reg_id)
                 else:
-                    payment_text = "پرداخت قسطی (هیچ قسطی پرداخت نشده)"
+                    status_text = "تأیید شده"
+                    second_payment_button = None
             else:
-                payment_text = "پرداخت کامل"
+                status_text = "نامشخص"
+                second_payment_button = None
             
-            # Format message
-            status_message += f"""--- ثبت‌نام شماره {i} ---
+            message += f"""--- دوره شماره {i} ---
 دوره: {term_name} با استاد {teacher_name}
-نوع پرداخت: {payment_type} ({payment_text})
+نوع پرداخت: {payment_type} ({payment_info})
+مبلغ: {payment_amount:,} تومان
 وضعیت: {status_text}
-تاریخ ثبت‌نام: {reg_date}
+
 """
             
-            # Add second payment button if needed
-            if payment_method == 'installment' and first_payment and not second_payment and payment_status == 'confirmed':
-                user_data[sender_id] = {
-                    'registration_id': reg_id,
-                    'term_name': term_name,
-                    'teacher_name': teacher_name,
-                    'payment_amount': price // 2,  # Half price for second installment
-                    'payment_type': payment_type
-                }
-                
-                status_message += "\nبرای پرداخت قسط دوم از دکمه زیر استفاده کنید:"
-                
-                await event.respond(status_message, 
-                                   buttons=KeyboardManager.second_payment_menu(reg_id))
-                return
+            # If registration is approved and needs second payment, send separate message with payment button
+            if payment_status == 'approved' and payment_method == 'installment' and not second_payment:
+                second_payment_message = f"""برای پرداخت قسط دوم دوره {term_name} با استاد {teacher_name} به مبلغ {price // 2:,} تومان، از دکمه زیر استفاده کنید:"""
+                await bot.send_message(sender_id, second_payment_message, buttons=second_payment_button)
         
-        await event.respond(status_message, buttons=KeyboardManager.back_to_main())
+        # Send main message with back button
+        await event.edit(message, buttons=KeyboardManager.back_to_main())
     
     @bot.on(events.CallbackQuery(pattern=r'pay_second_installment_(\d+)'))
     async def second_payment_handler(event):
@@ -393,9 +474,13 @@ async def register_registration_handlers(bot):
             admin_message = f"""درخواست پرداخت حضوری قسط دوم:
 
 نام و نام خانوادگی: {registration[15]} {registration[16]}
-شماره دانشجویی: {registration[2]}
+شماره دانشجویی/کد ملی: {registration[2]}
 دوره: {registration[19]} با استاد {registration[18]}
 مبلغ: {user_data[sender_id]['payment_amount']:,} تومان"""
+            
+            # Check if the name indicates the user needs verification
+            if registration[15] == "در حال بررسی":
+                admin_message += "\n⚠️ نیاز به بررسی هویت دانشجو (اطلاعات در سیستم یافت نشد)"
             
             try:
                 admin_id = Config.ADMIN_ID
@@ -441,8 +526,12 @@ async def register_registration_handlers(bot):
         try:
             lines = message_text.split('\n')
             name_line = [line for line in lines if "نام و نام خانوادگی:" in line][0]
-            student_id_line = [line for line in lines if "شماره دانشجویی:" in line][0]
+            # Check both formats for student ID line
+            student_id_line = next((line for line in lines if "شماره دانشجویی/کد ملی:" in line or "شماره دانشجویی:" in line), None)
             
+            if not student_id_line:
+                raise Exception("Student ID line not found in message")
+                
             name = name_line.split(": ")[1].strip()
             student_id = student_id_line.split(": ")[1].strip()
             

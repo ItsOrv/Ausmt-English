@@ -10,6 +10,7 @@ from utils.config import Config
 from handlers.start import register_start_handlers
 from handlers.registration import register_registration_handlers
 from handlers.admin import register_admin_handlers
+from handlers.admin_utils import process_admin_message
 
 # Set up logging
 logging.basicConfig(
@@ -36,14 +37,22 @@ async def main():
     # Initialize database
     db = Database()
     
-    # Add sample data for testing
-    db.add_sample_data()
-    logger.info("Sample data added to database.")
-    
     # Create the Telegram client
     bot = TelegramClient('language_course_bot', Config.API_ID, Config.API_HASH)
     
-    # Register handlers
+    # Register global message handler for admin text input
+    @bot.on(events.NewMessage(func=lambda e: e.text and not e.text.startswith('/')))
+    async def handle_text_messages(event):
+        """Handler for text messages that could be part of admin workflows."""
+        # Try to process as admin message first
+        processed = await process_admin_message(event)
+        if processed:
+            return
+        
+        # If not processed as admin message, can add other text message handlers here
+        # or just ignore the message
+    
+    # Register feature-specific handlers
     await register_start_handlers(bot)
     await register_registration_handlers(bot)
     await register_admin_handlers(bot)
