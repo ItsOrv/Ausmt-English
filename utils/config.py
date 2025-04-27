@@ -30,6 +30,16 @@ class Config:
     # Excel file path
     EXCEL_PATH = os.getenv('EXCEL_PATH', 'data/students.xlsx')
     
+    # Excel column mappings
+    EMAIL_COLUMN = os.getenv('EMAIL_COLUMN', 'A')
+    FIRST_NAME_COLUMN = os.getenv('FIRST_NAME_COLUMN', 'C')
+    LAST_NAME_COLUMN = os.getenv('LAST_NAME_COLUMN', 'E')
+    FATHER_NAME_COLUMN = os.getenv('FATHER_NAME_COLUMN', 'G')
+    FACULTY_COLUMN = os.getenv('FACULTY_COLUMN', 'I')
+    MAJOR_COLUMN = os.getenv('MAJOR_COLUMN', 'K')
+    EDUCATION_LEVEL_COLUMN = os.getenv('EDUCATION_LEVEL_COLUMN', 'N')
+    PHONE_COLUMN = os.getenv('PHONE_COLUMN', 'Y')
+    
     @classmethod
     def validate_config(cls):
         """Validate that all required environment variables are set."""
