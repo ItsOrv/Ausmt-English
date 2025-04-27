@@ -29,59 +29,28 @@ class ExcelHandler:
             'faculty': column_index_from_string(Config.FACULTY_COLUMN) - 1,
             'major': column_index_from_string(Config.MAJOR_COLUMN) - 1,
             'education_level': column_index_from_string(Config.EDUCATION_LEVEL_COLUMN) - 1,
-            'phone': column_index_from_string(Config.PHONE_COLUMN) - 1
+            'phone': column_index_from_string(Config.PHONE_COLUMN) - 1,
+            # Add columns for national ID and student ID
+            'national_id': column_index_from_string(Config.NATIONAL_ID_COLUMN) - 1 if hasattr(Config, 'NATIONAL_ID_COLUMN') else column_index_from_string('G') - 1,
+            'student_id': column_index_from_string(Config.STUDENT_ID_COLUMN) - 1 if hasattr(Config, 'STUDENT_ID_COLUMN') else column_index_from_string('I') - 1
         }
         self._validate_excel_file()
     
     def _validate_excel_file(self):
-        """Validate that the Excel file exists, if not create a sample one."""
+        """Validate that the Excel file exists."""
         if not os.path.exists(self.excel_path):
             # Create directory if it doesn't exist
             os.makedirs(os.path.dirname(self.excel_path), exist_ok=True)
-            
-            # Create a workbook with sample data
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            
-            # Create sample data with cells in the correct columns
-            sample_data = [
-                # Student 1
-                ('9512345', 'محمد', 'احمدی', 'علی', 'مهندسی', 'کامپیوتر', 'کارشناسی', 'mohammad@example.com', '09123456789'),
-                # Student 2
-                ('9623456', 'علی', 'محمدی', 'حسن', 'علوم پایه', 'فیزیک', 'کارشناسی ارشد', 'ali@example.com', '09123456788'),
-                # Student 3
-                ('9734567', 'فاطمه', 'حسینی', 'محمود', 'علوم انسانی', 'روانشناسی', 'کارشناسی', 'fateme@example.com', '09123456787'),
-                # Student 4
-                ('9845678', 'زهرا', 'رضایی', 'رضا', 'مهندسی', 'برق', 'دکتری', 'zahra@example.com', '09123456786'),
-                # Student 5
-                ('9956789', 'امیر', 'کریمی', 'مجید', 'پزشکی', 'پزشکی عمومی', 'دکتری', 'amir@example.com', '09123456785')
-            ]
-            
-            # Add student_id in the first column (assuming it's column 0)
-            student_id_col = 0
-            for row_idx, student in enumerate(sample_data, start=1):
-                ws.cell(row=row_idx, column=student_id_col+1, value=student[0])
-                
-                # Add other data in their respective columns
-                ws.cell(row=row_idx, column=self.column_indices['email']+1, value=student[7])
-                ws.cell(row=row_idx, column=self.column_indices['first_name']+1, value=student[1])
-                ws.cell(row=row_idx, column=self.column_indices['last_name']+1, value=student[2])
-                ws.cell(row=row_idx, column=self.column_indices['father_name']+1, value=student[3])
-                ws.cell(row=row_idx, column=self.column_indices['faculty']+1, value=student[4])
-                ws.cell(row=row_idx, column=self.column_indices['major']+1, value=student[5])
-                ws.cell(row=row_idx, column=self.column_indices['education_level']+1, value=student[6])
-                ws.cell(row=row_idx, column=self.column_indices['phone']+1, value=student[8])
-            
-            # Save the workbook
-            wb.save(self.excel_path)
-            logger.info(f"Created sample Excel file at {self.excel_path}")
+            logger.error(f"Excel file not found at {self.excel_path}. Please add a valid student data file.")
+            # We won't create a sample file as we now have a real data file
     
     def check_student_id(self, student_id):
         """
-        Check if a student ID exists in the Excel file.
+        Check if a student ID or national ID exists in the Excel file.
+        Searches for matches in both national_id (column G) and student_id (column I) columns.
         
         Args:
-            student_id (str): Student ID to check
+            student_id (str): Student ID or national ID to check
             
         Returns:
             tuple: (exists, first_name, last_name) or (False, None, None) if not found
@@ -94,29 +63,35 @@ class ExcelHandler:
             # Convert student_id to string to ensure proper comparison
             student_id = str(student_id)
             
+            logger.info(f"Looking for student ID or national ID: {student_id}")
+            
             # Find the student
             found = False
             first_name = None
             last_name = None
             
-            # Debug: Print all student IDs in the Excel file
-            logger.info(f"Looking for student ID: {student_id}")
-            logger.info("Student IDs in the Excel file:")
-            for row in ws.iter_rows(min_row=1, max_col=1, max_row=ws.max_row):
-                cell_value = str(row[0].value) if row[0].value is not None else ""
-                logger.info(f"  {cell_value}")
+            # We'll search in both national_id (column G) and student_id (column I) 
+            for row in ws.iter_rows(min_row=2, max_col=ws.max_column, max_row=ws.max_row):
+                # Check national ID
+                national_id_value = str(row[self.column_indices['national_id']].value).strip() if row[self.column_indices['national_id']].value is not None else ""
                 
-            # Assuming student_id is in column A (index 0)
-            for row in ws.iter_rows(min_row=1, max_col=ws.max_column, max_row=ws.max_row):
-                cell_value = str(row[0].value) if row[0].value is not None else ""
-                logger.info(f"Comparing '{cell_value}' with '{student_id}'")
+                # Check student ID
+                student_id_value = str(row[self.column_indices['student_id']].value).strip() if row[self.column_indices['student_id']].value is not None else ""
                 
-                if cell_value == student_id:
-                    logger.info(f"Match found! Fetching first_name from column index {self.column_indices['first_name']}")
-                    logger.info(f"Fetching last_name from column index {self.column_indices['last_name']}")
+                # Compare with input (which could be national ID or student ID)
+                if national_id_value == student_id or student_id_value == student_id:
+                    logger.info(f"Match found for ID: {student_id}")
                     
+                    # Get name and last name from the columns specified in config
                     first_name = row[self.column_indices['first_name']].value
                     last_name = row[self.column_indices['last_name']].value
+                    
+                    # Handle case where name might be None
+                    if first_name is None:
+                        first_name = "نام نامشخص"
+                    if last_name is None:
+                        last_name = "نام خانوادگی نامشخص"
+                        
                     logger.info(f"Found student: {first_name} {last_name}")
                     found = True
                     break
@@ -125,4 +100,6 @@ class ExcelHandler:
                 
         except Exception as e:
             logger.error(f"Error checking student ID: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, None, None 

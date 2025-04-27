@@ -18,11 +18,11 @@ class KeyboardManager:
     def main_menu():
         """Create main menu keyboard."""
         keyboard = [
-            [Button.text("📚 مشاهده دوره‌ها", resize=True)],
-            [Button.text("📄 پیگیری وضعیت ثبت‌نام و پرداخت", resize=True)],
-            [Button.text("ℹ️ درباره انجمن", resize=True)],
-            [Button.text("❓ سوالات متداول", resize=True)],
-            [Button.text("📞 ارتباط با پشتیبانی", resize=True)]
+            [Button.inline("📚 مشاهده دوره‌ها", data="view_courses")],
+            [Button.inline("📄 پیگیری وضعیت ثبت‌نام و پرداخت", data="check_registration_status")],
+            [Button.inline("ℹ️ درباره انجمن", data="about_association")],
+            [Button.inline("❓ سوالات متداول", data="faq")],
+            [Button.inline("📞 ارتباط با پشتیبانی", data="contact_support")]
         ]
         return keyboard
     
@@ -130,8 +130,21 @@ class KeyboardManager:
     def admin_menu():
         """Create admin menu keyboard."""
         keyboard = [
-            [Button.text("📊 مدیریت پرداخت‌ها", resize=True)],
-            [Button.text("📨 ارسال پیام گروهی", resize=True)],
-            [Button.text("🔙 بازگشت به منوی اصلی", resize=True)]
+            [Button.inline("📊 مدیریت پرداخت‌ها", data="admin_manage_payments")],
+            [Button.inline("👨‍🏫 مدیریت اساتید", data="admin_manage_teachers")],
+            [Button.inline("📚 مدیریت دوره‌ها", data="admin_manage_courses")],
+            [Button.inline("🗓️ مدیریت ترم‌ها", data="admin_manage_terms")],
+            [Button.inline("📨 ارسال پیام گروهی", data="admin_broadcast")],
+            [Button.inline("📈 آمار و گزارشات", data="admin_statistics")],
+            [Button.inline("❓ مدیریت سوالات متداول", data="admin_manage_faq")],
+            [Button.inline("🔙 خروج از پنل مدیریت", data="exit_admin_panel")]
+        ]
+        return keyboard
+    
+    @staticmethod
+    def back_to_admin_menu():
+        """Create back to admin menu keyboard."""
+        keyboard = [
+            [Button.inline("🔙 بازگشت به منوی مدیریت", data="back_to_admin_menu")]
         ]
         return keyboard 

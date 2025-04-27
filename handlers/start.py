@@ -21,24 +21,36 @@ async def register_start_handlers(bot):
     async def start_handler(event):
         """Handler for /start command."""
         sender = await event.get_sender()
-        logger.info(f"Start command received from {sender.id}")
+        sender_id = sender.id
+        logger.info(f"Start command received from {sender_id}")
         
-        # Welcome message with user's first name
-        welcome_message = f"""سلام {sender.first_name}! 👋
+        # Check if sender is admin
+        if str(sender_id) == str(Config.ADMIN_ID):
+            logger.info(f"Admin identified: {sender_id}, redirecting to admin menu")
+            # Instead of trying to send a separate /admin command, just use the admin handler directly
+            admin_message = """🔐 **پنل مدیریت**
+
+به پنل مدیریت ربات ثبت‌نام دوره‌های زبان خوش آمدید.
+لطفا از منوی زیر گزینه مورد نظر خود را انتخاب کنید:"""
+            
+            await event.respond(admin_message, buttons=KeyboardManager.admin_menu())
+        else:
+            # Welcome message with user's first name
+            welcome_message = f"""سلام {sender.first_name}! 👋
 
 به ربات ثبت‌نام دوره‌های زبان انجمن خوش آمدید.
 لطفا از منوی زیر گزینه مورد نظر خود را انتخاب کنید:"""
-        
-        # Send welcome message with main menu keyboard
-        await event.respond(welcome_message, buttons=KeyboardManager.main_menu())
+            
+            # Send welcome message with main menu keyboard for regular users
+            await event.respond(welcome_message, buttons=KeyboardManager.main_menu())
     
-    @bot.on(events.NewMessage(pattern='📚 مشاهده دوره‌ها'))
+    @bot.on(events.CallbackQuery(pattern=r'view_courses'))
     async def view_courses_handler(event):
         """Handler for viewing courses."""
         # Get all terms from database
         terms = db.get_terms()
         
-        await event.respond("لطفا ترم مورد نظر خود را انتخاب کنید:", 
+        await event.edit("لطفا ترم مورد نظر خود را انتخاب کنید:", 
                            buttons=KeyboardManager.terms_menu(terms))
     
     @bot.on(events.CallbackQuery(pattern=r'term_(\d+)'))
@@ -143,13 +155,13 @@ async def register_start_handlers(bot):
         await event.edit("لطفا استاد مورد نظر خود را انتخاب کنید:",
                          buttons=KeyboardManager.teachers_menu(teachers))
     
-    @bot.on(events.NewMessage(pattern='ℹ️ درباره انجمن'))
+    @bot.on(events.CallbackQuery(pattern=r'about_association'))
     async def about_handler(event):
         """Handler for about the association."""
         # Get about information from database
         about = db.get_about()
         
-        if about:
+        if about and len(about) == 2:
             title, content = about
             about_message = f"""**{title}**
 
@@ -157,24 +169,26 @@ async def register_start_handlers(bot):
         else:
             about_message = "اطلاعاتی درباره انجمن وجود ندارد."
         
-        await event.respond(about_message, buttons=KeyboardManager.back_to_main())
+        await event.edit(about_message, buttons=KeyboardManager.back_to_main())
     
-    @bot.on(events.NewMessage(pattern='❓ سوالات متداول'))
+    @bot.on(events.CallbackQuery(pattern=r'faq'))
     async def faq_handler(event):
         """Handler for FAQ."""
         # Get FAQ items from database
         faq_items = db.get_faq()
         
-        if faq_items:
+        if faq_items and len(faq_items) > 0:
             faq_message = "**سوالات متداول**\n\n"
-            for i, (question, answer) in enumerate(faq_items, 1):
+            for i, item in enumerate(faq_items, 1):
+                # Skip the ID field and use only question and answer
+                faq_id, question, answer = item
                 faq_message += f"**{i}. {question}**\n{answer}\n\n"
         else:
             faq_message = "در حال حاضر سوالی در بخش سوالات متداول وجود ندارد."
         
-        await event.respond(faq_message, buttons=KeyboardManager.back_to_main())
+        await event.edit(faq_message, buttons=KeyboardManager.back_to_main())
     
-    @bot.on(events.NewMessage(pattern='📞 ارتباط با پشتیبانی'))
+    @bot.on(events.CallbackQuery(pattern=r'contact_support'))
     async def contact_support_handler(event):
         """Handler for contacting support."""
         support_message = """**ارتباط با پشتیبانی**
@@ -186,6 +200,19 @@ async def register_start_handlers(bot):
 🌐 **کانال تلگرام**: @language_association
 ⏰ **ساعات پاسخگویی**: شنبه تا چهارشنبه، ساعت 8 تا 16"""
         
-        await event.respond(support_message, buttons=KeyboardManager.back_to_main())
+        await event.edit(support_message, buttons=KeyboardManager.back_to_main())
+    
+    @bot.on(events.CallbackQuery(pattern=r'check_registration_status'))
+    async def check_registration_status_handler(event):
+        """Handler for checking registration status."""
+        # This handler would normally check the user's registration status
+        sender = await event.get_sender()
+        
+        # For now, redirect to a simple message
+        status_message = """برای پیگیری وضعیت ثبت‌نام و پرداخت خود، لطفا شماره دانشجویی خود را وارد کنید.
+
+یا با پشتیبانی تماس بگیرید."""
+        
+        await event.edit(status_message, buttons=KeyboardManager.back_to_main())
     
     logger.info("Start and main menu handlers registered successfully") 

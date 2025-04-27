@@ -21,7 +21,13 @@ class Config:
     BOT_TOKEN = os.getenv('BOT_TOKEN')
     
     # Admin Telegram ID
-    ADMIN_ID = int(os.getenv('ADMIN_ID', 0))
+    ADMIN_ID_RAW = os.getenv('ADMIN_ID', '0')
+    try:
+        ADMIN_ID = int(ADMIN_ID_RAW)
+        logger.info(f"ADMIN_ID loaded as: {ADMIN_ID} (type: {type(ADMIN_ID)})")
+    except ValueError:
+        logger.error(f"Failed to parse ADMIN_ID '{ADMIN_ID_RAW}' as integer, defaulting to 0")
+        ADMIN_ID = 0
     
     # Payment information
     CARD_NUMBER = os.getenv('CARD_NUMBER', '6219-xxxx-xxxx-xxxx')
@@ -39,6 +45,8 @@ class Config:
     MAJOR_COLUMN = os.getenv('MAJOR_COLUMN', 'K')
     EDUCATION_LEVEL_COLUMN = os.getenv('EDUCATION_LEVEL_COLUMN', 'N')
     PHONE_COLUMN = os.getenv('PHONE_COLUMN', 'Y')
+    NATIONAL_ID_COLUMN = os.getenv('NATIONAL_ID_COLUMN', 'G')  # Default to column G for national ID
+    STUDENT_ID_COLUMN = os.getenv('STUDENT_ID_COLUMN', 'I')  # Default to column I for student ID
     
     @classmethod
     def validate_config(cls):
@@ -53,8 +61,10 @@ class Config:
         
         # Check if ADMIN_ID is a valid integer
         try:
-            int(cls.ADMIN_ID)
-        except ValueError:
+            if cls.ADMIN_ID == 0:
+                logger.warning("ADMIN_ID is set to 0, which might indicate a problem")
+            logger.info(f"Final ADMIN_ID validation: {cls.ADMIN_ID} (type: {type(cls.ADMIN_ID)})")
+        except (ValueError, TypeError):
             logger.error("ADMIN_ID must be a valid integer (Telegram user ID)")
             return False
             
